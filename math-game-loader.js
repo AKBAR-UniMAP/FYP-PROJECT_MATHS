@@ -14,12 +14,18 @@ class MathGameLoader {
   async initialize() {
     console.log("🚀 Initializing Math Adventure Game Loader...");
 
-    // Initialize WebAssembly optimizer
-    this.wasmOptimizer = new WasmOptimizer();
-    await this.wasmOptimizer.initialize();
+    // Check if WasmOptimizer is available
+    if (typeof WasmOptimizer === 'undefined') {
+      console.warn("⚠️ WasmOptimizer not available, using basic loader functionality");
+      this.wasmOptimizer = null;
+    } else {
+      // Initialize WebAssembly optimizer
+      this.wasmOptimizer = new WasmOptimizer();
+      await this.wasmOptimizer.initialize();
 
-    // Optimize config
-    this.config = this.wasmOptimizer.getOptimizedConfig(this.config);
+      // Optimize config
+      this.config = this.wasmOptimizer.getOptimizedConfig(this.config);
+    }
 
     // Check online status
     this.checkOnlineStatus();

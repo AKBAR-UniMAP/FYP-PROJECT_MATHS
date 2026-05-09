@@ -127,51 +127,51 @@
       // Load the WebAssembly optimizer first
       var wasmOptimizerScript = document.createElement("script");
       wasmOptimizerScript.src = wasmOptimizerUrl;
-      document.body.appendChild(wasmOptimizerScript);
-
-      // Load the enhanced math game loader
-      var mathLoaderScript = document.createElement("script");
-      mathLoaderScript.src = mathLoaderUrl;
-      mathLoaderScript.onload = () => {
-        // Initialize the enhanced loader
-        var mathLoader = new MathGameLoader(config);
-        mathLoader.initialize().then(() => {
-          // Now load the Unity loader
-          var unityScript = document.createElement("script");
-          unityScript.src = loaderUrl;
-          unityScript.onload = () => {
-            mathLoader.createInstance(canvas, (progress) => {
-              progressBarFull.style.width = 100 * progress + "%";
-              loadingMessage.textContent = getKidFriendlyMessage(progress);
-            }).then((unityInstance) => {
-              loadingBar.style.display = "none";
-              loadingMessage.style.display = "none";
-              fullscreenButton.onclick = () => {
-                mathLoader.enterFullscreen();
-              };
-
-              // Add keyboard shortcuts for kids
-              document.addEventListener('keydown', (e) => {
-                if (e.key === 'f' || e.key === 'F') {
+      wasmOptimizerScript.onload = () => {
+        // Now load the enhanced math game loader after WasmOptimizer is loaded
+        var mathLoaderScript = document.createElement("script");
+        mathLoaderScript.src = mathLoaderUrl;
+        mathLoaderScript.onload = () => {
+          // Initialize the enhanced loader
+          var mathLoader = new MathGameLoader(config);
+          mathLoader.initialize().then(() => {
+            // Now load the Unity loader
+            var unityScript = document.createElement("script");
+            unityScript.src = loaderUrl;
+            unityScript.onload = () => {
+              mathLoader.createInstance(canvas, (progress) => {
+                progressBarFull.style.width = 100 * progress + "%";
+                loadingMessage.textContent = getKidFriendlyMessage(progress);
+              }).then((unityInstance) => {
+                loadingBar.style.display = "none";
+                loadingMessage.style.display = "none";
+                fullscreenButton.onclick = () => {
                   mathLoader.enterFullscreen();
-                }
+                };
+
+                // Add keyboard shortcuts for kids
+                document.addEventListener('keydown', (e) => {
+                  if (e.key === 'f' || e.key === 'F') {
+                    mathLoader.enterFullscreen();
+                  }
+                });
+
+              }).catch((error) => {
+                loadingBar.style.display = "none";
+                loadingMessage.style.display = "none";
+                alert(error.message);
               });
-
-            }).catch((error) => {
-              loadingBar.style.display = "none";
-              loadingMessage.style.display = "none";
-              alert(error.message);
-            });
-          };
-          document.body.appendChild(unityScript);
-        }).catch((error) => {
-          loadingBar.style.display = "none";
-          loadingMessage.style.display = "none";
-          alert("Failed to initialize game loader: " + error.message);
-        });
+            };
+            document.body.appendChild(unityScript);
+          }).catch((error) => {
+            loadingBar.style.display = "none";
+            loadingMessage.style.display = "none";
+            alert("Failed to initialize game loader: " + error.message);
+          });
+        };
+        document.body.appendChild(mathLoaderScript);
       };
-
-      document.body.appendChild(mathLoaderScript);
+      document.body.appendChild(wasmOptimizerScript);
 
       // Register service worker for offline support
       if ('serviceWorker' in navigator) {
