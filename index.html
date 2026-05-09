@@ -32,6 +32,30 @@
       var fullscreenButton = document.querySelector("#unity-fullscreen-button");
       var warningBanner = document.querySelector("#unity-warning");
 
+      // Shows a temporary message banner/ribbon for a few seconds, or
+      // a permanent error message on top of the canvas if type=='error'.
+      // If type=='warning', a yellow highlight color is used.
+      // Modify or remove this function to customize the visually presented
+      // way that non-critical warnings and error messages are presented to the
+      // user.
+      function unityShowBanner(msg, type) {
+        function updateBannerVisibility() {
+          warningBanner.style.display = warningBanner.children.length ? 'block' : 'none';
+        }
+        var div = document.createElement('div');
+        div.innerHTML = msg;
+        warningBanner.appendChild(div);
+        if (type == 'error') div.style = 'background: red; padding: 10px;';
+        else {
+          if (type == 'warning') div.style = 'background: yellow; padding: 10px;';
+          setTimeout(function() {
+            warningBanner.removeChild(div);
+            updateBannerVisibility();
+          }, 5000);
+        }
+        updateBannerVisibility();
+      }
+
       // Enhanced loading messages for math kids game
       function getKidFriendlyMessage(progress) {
         if (progress < 0.2) return "Getting ready for math fun! 🎯";
@@ -66,6 +90,23 @@
         dataUrl: buildUrl + "/html.data.gz",
         frameworkUrl: buildUrl + "/html.framework.js.gz",
         codeUrl: buildUrl + "/html.wasm.gz",
+        streamingAssetsUrl: "StreamingAssets",
+        companyName: "MathKidsGame",
+        productName: "Math Adventure",
+        productVersion: "1.0",
+        showBanner: function(msg, type) {
+          if (type === 'error') {
+            msg = kidFriendlyError(msg);
+          }
+          unityShowBanner(msg, type);
+        },
+      };
+
+      // Fallback config for uncompressed files (used if compressed files fail)
+      var fallbackConfig = {
+        dataUrl: buildUrl + "/html.data",
+        frameworkUrl: buildUrl + "/html.framework.js",
+        codeUrl: buildUrl + "/html.wasm",
         streamingAssetsUrl: "StreamingAssets",
         companyName: "MathKidsGame",
         productName: "Math Adventure",
@@ -132,7 +173,7 @@
         var mathLoaderScript = document.createElement("script");
         mathLoaderScript.src = mathLoaderUrl;
         mathLoaderScript.onload = () => {
-          // Initialize the enhanced loader
+          // Initialize the enhanced loader with primary config
           var mathLoader = new MathGameLoader(config);
           mathLoader.initialize().then(() => {
             // Now load the Unity loader

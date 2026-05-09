@@ -117,7 +117,7 @@ class MathGameLoader {
     }
   }
 
-  // Load individual asset with caching
+  // Load individual asset with caching and fallback
   async loadAsset(url, name) {
     // Try cache first
     if (this.cache && !this.isOffline) {
@@ -132,51 +132,141 @@ class MathGameLoader {
       }
     }
 
-    // Fetch from network
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to load ${name}: ${response.status}`);
-    }
-
-    // Cache the response
-    if (this.cache && response.ok) {
-      try {
-        this.cache.put(url, response.clone());
-      } catch (error) {
-        console.warn(`⚠️ Failed to cache ${name}:`, error);
+    // Fetch from network with fallback for compressed files
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-    }
 
-    console.log(`📥 Downloaded ${name}`);
-    return response;
+      // Cache the response
+      if (this.cache && response.ok) {
+        try {
+          this.cache.put(url, response.clone());
+        } catch (error) {
+          console.warn(`⚠️ Failed to cache ${name}:`, error);
+        }
+      }
+
+      console.log(`📥 Downloaded ${name}`);
+      return response;
+    } catch (error) {
+      // If compressed file fails, try uncompressed version
+      if (url.endsWith('.gz')) {
+        const uncompressedUrl = url.slice(0, -3); // Remove .gz extension
+        console.warn(`⚠️ Compressed ${name} failed, trying uncompressed version...`);
+        try {
+          const response = await fetch(uncompressedUrl);
+          if (response.ok) {
+            console.log(`📥 Downloaded uncompressed ${name}`);
+            return response;
+          }
+        } catch (fallbackError) {
+          console.error(`❌ Both compressed and uncompressed ${name} failed`);
+        }
+      }
+      throw error;
+    }
   }
 
-  // Create Unity instance with enhanced error handling
+  // Create Unity instance with enhanced error handling and fallback
   async createInstance(canvas, progressCallback) {
-    try {
-      console.log("🎯 Creating Unity instance for Math Adventure...");
+    let currentConfig = this.config;
+    let attemptCount = 0;
+    const maxAttempts = 2;
 
-      // Preload WebAssembly if optimizer is available
-      if (this.wasmOptimizer && !this.wasmOptimizer.fallbackMode) {
-        await this.wasmOptimizer.preloadWasm(this.config.codeUrl);
+    while (attemptCount < maxAttempts) {
+      try {
+        console.log(`🎯 Creating Unity instance for Math Adventure (attempt ${attemptCount + 1})...`);
+
+        // Preload WebAssembly if optimizer is available (skip for compressed files)
+        if (this.wasmOptimizer && !this.wasmOptimizer.fallbackMode && !currentConfig.codeUrl.endsWith('.gz')) {
+          await this.wasmOptimizer.preloadWasm(currentConfig.codeUrl);
+        }
+
+        // Load assets first
+        await this.loadAssetsWithConfig(currentConfig, progressCallback);
+
+        // Create the Unity instance
+        this.gameInstance = await window.createUnityInstance(canvas, currentConfig, progressCallback);
+
+        console.log("🎉 Math Adventure loaded successfully!");
+
+        // Set up enhanced event handlers
+        this.setupEventHandlers();
+
+        return this.gameInstance;
+
+      } catch (error) {
+        console.error(`💥 Failed to create Unity instance (attempt ${attemptCount + 1}):`, error);
+
+        attemptCount++;
+
+        // If this is the first attempt and we were using compressed files, try uncompressed
+        if (attemptCount === 1 && this.isUsingCompressedFiles(currentConfig)) {
+          console.log("🔄 Switching to uncompressed files...");
+          currentConfig = this.getUncompressedConfig();
+          continue;
+        }
+
+        // Provide more specific error messages for common issues
+        let friendlyError = this.getKidFriendlyError(error);
+
+        if (error.message.includes('SyntaxError') || error.message.includes('Invalid or unexpected token')) {
+          friendlyError = "The game files seem to be compressed. Please refresh the page or try a different browser! 📦";
+        } else if (error.message.includes('WebAssembly.compile') || error.message.includes('magic word')) {
+          friendlyError = "The game needs a newer browser to run. Please update Chrome, Firefox, or Safari! 🌟";
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          friendlyError = "Can't download the game files. Check your internet connection and try again! 📡";
+        }
+
+        throw new Error(friendlyError);
       }
+    }
+  }
 
-      // Load assets first
-      await this.loadAssets(progressCallback);
+  // Check if config is using compressed files
+  isUsingCompressedFiles(config) {
+    return config.dataUrl.endsWith('.gz') ||
+           config.frameworkUrl.endsWith('.gz') ||
+           config.codeUrl.endsWith('.gz');
+  }
 
-      // Create the Unity instance
-      this.gameInstance = await window.createUnityInstance(canvas, this.config, progressCallback);
+  // Get uncompressed version of config
+  getUncompressedConfig() {
+    return {
+      dataUrl: this.config.dataUrl.replace('.gz', ''),
+      frameworkUrl: this.config.frameworkUrl.replace('.gz', ''),
+      codeUrl: this.config.codeUrl.replace('.gz', ''),
+      streamingAssetsUrl: this.config.streamingAssetsUrl,
+      companyName: this.config.companyName,
+      productName: this.config.productName,
+      productVersion: this.config.productVersion,
+      showBanner: this.config.showBanner,
+    };
+  }
 
-      console.log("🎉 Math Adventure loaded successfully!");
+  // Load assets with specific config
+  async loadAssetsWithConfig(config, progressCallback) {
+    const assets = [
+      { url: config.dataUrl, name: 'Game Data' },
+      { url: config.frameworkUrl, name: 'Game Engine' },
+      { url: config.codeUrl, name: 'Game Code' }
+    ];
 
-      // Set up enhanced event handlers
-      this.setupEventHandlers();
+    let loadedCount = 0;
+    const totalAssets = assets.length;
 
-      return this.gameInstance;
-
-    } catch (error) {
-      console.error("💥 Failed to create Unity instance:", error);
-      throw this.getKidFriendlyError(error);
+    for (const asset of assets) {
+      try {
+        await this.loadAsset(asset.url, asset.name);
+        loadedCount++;
+        const progress = loadedCount / totalAssets;
+        progressCallback(progress);
+      } catch (error) {
+        console.error(`❌ Failed to load ${asset.name}:`, error);
+        throw error;
+      }
     }
   }
 

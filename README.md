@@ -107,6 +107,42 @@ var config = {
 - **Memory Management**: Automatic cleanup and optimization
 - **Caching**: Intelligent caching reduces load times
 
+## 🌐 Deployment Configuration
+
+### Vercel Deployment
+The project includes a `vercel.json` configuration file that sets the correct headers for compressed Unity WebGL files:
+
+```json
+{
+  "headers": [
+    {
+      "source": "/Build/(.*)\\.gz",
+      "headers": [
+        {
+          "key": "Content-Encoding",
+          "value": "gzip"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Server Requirements
+For proper functioning, the web server must serve compressed Unity files with correct headers:
+- `Content-Encoding: gzip` for .gz files
+- `Content-Type: application/wasm` for .wasm.gz files
+- `Content-Type: application/javascript` for .js.gz files
+
+### Content Security Policy
+If you encounter CSP violations, ensure your deployment allows:
+- `script-src 'self' 'wasm-unsafe-eval'`
+- `wasm-unsafe-eval` for WebAssembly execution
+- Inline scripts for Unity's dynamic loading
+
+### Browser Extensions
+Some browser extensions may interfere with WebGL or WebAssembly. Try disabling extensions if you encounter issues.
+
 ## 🎯 Educational Features
 
 - **Progress Saving**: Game progress persists across sessions

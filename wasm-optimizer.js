@@ -170,9 +170,15 @@ class WasmOptimizer {
     }
   }
 
-  // Preload WebAssembly module
+  // Preload WebAssembly module (skip for compressed files)
   async preloadWasm(url) {
     if (!this.wasmSupported) return null;
+
+    // Skip preloading for compressed files - Unity handles decompression
+    if (url.endsWith('.gz')) {
+      console.log("⚡ Skipping WebAssembly preload for compressed file:", url);
+      return null;
+    }
 
     try {
       console.log("⚡ Preloading WebAssembly module...");
