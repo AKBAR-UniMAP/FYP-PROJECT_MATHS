@@ -32,41 +32,50 @@
       var fullscreenButton = document.querySelector("#unity-fullscreen-button");
       var warningBanner = document.querySelector("#unity-warning");
 
-      // Shows a temporary message banner/ribbon for a few seconds, or
-      // a permanent error message on top of the canvas if type=='error'.
-      // If type=='warning', a yellow highlight color is used.
-      // Modify or remove this function to customize the visually presented
-      // way that non-critical warnings and error messages are presented to the
-      // user.
-      function unityShowBanner(msg, type) {
-        function updateBannerVisibility() {
-          warningBanner.style.display = warningBanner.children.length ? 'block' : 'none';
+      // Enhanced loading messages for math kids game
+      function getKidFriendlyMessage(progress) {
+        if (progress < 0.2) return "Getting ready for math fun! 🎯";
+        if (progress < 0.4) return "Loading numbers and shapes... 🔢";
+        if (progress < 0.6) return "Preparing math challenges... ➕";
+        if (progress < 0.8) return "Almost ready to play! 🎮";
+        return "Starting your math adventure! 🚀";
+      }
+
+      // Enhanced error handling for kids
+      function kidFriendlyError(message) {
+        const kidMessages = {
+          "WebAssembly": "Oops! Your browser needs an update to play math games. Try using a newer browser! 🌟",
+          "WebGL": "Math games need special graphics! Please update your browser or enable graphics. 🎨",
+          "network": "Can't connect to load the game. Check your internet and try again! 📡",
+          "memory": "Not enough space to load the game. Try closing other tabs! 💾"
+        };
+
+        for (const [key, msg] of Object.entries(kidMessages)) {
+          if (message.toLowerCase().includes(key.toLowerCase())) {
+            return msg;
+          }
         }
-        var div = document.createElement('div');
-        div.innerHTML = msg;
-        warningBanner.appendChild(div);
-        if (type == 'error') div.style = 'background: red; padding: 10px;';
-        else {
-          if (type == 'warning') div.style = 'background: yellow; padding: 10px;';
-          setTimeout(function() {
-            warningBanner.removeChild(div);
-            updateBannerVisibility();
-          }, 5000);
-        }
-        updateBannerVisibility();
+        return "Something went wrong loading the game. Please refresh and try again! 🔄";
       }
 
       var buildUrl = "Build";
       var loaderUrl = buildUrl + "/html.loader.js";
+      var mathLoaderUrl = "math-game-loader.js";
+      var wasmOptimizerUrl = "wasm-optimizer.js";
       var config = {
         dataUrl: buildUrl + "/html.data.gz",
         frameworkUrl: buildUrl + "/html.framework.js.gz",
         codeUrl: buildUrl + "/html.wasm.gz",
         streamingAssetsUrl: "StreamingAssets",
-        companyName: "DefaultCompany",
-        productName: "My project",
-        productVersion: "0.1",
-        showBanner: unityShowBanner,
+        companyName: "MathKidsGame",
+        productName: "Math Adventure",
+        productVersion: "1.0",
+        showBanner: function(msg, type) {
+          if (type === 'error') {
+            msg = kidFriendlyError(msg);
+          }
+          unityShowBanner(msg, type);
+        },
       };
 
       // By default, Unity keeps WebGL canvas render target size matched with
@@ -109,22 +118,102 @@
 
       loadingBar.style.display = "block";
 
-      var script = document.createElement("script");
-      script.src = loaderUrl;
-      script.onload = () => {
-        createUnityInstance(canvas, config, (progress) => {
-          progressBarFull.style.width = 100 * progress + "%";
-              }).then((unityInstance) => {
-                loadingBar.style.display = "none";
-                fullscreenButton.onclick = () => {
-                  unityInstance.SetFullscreen(1);
-                };
-              }).catch((message) => {
-                alert(message);
-              });
-            };
+      // Add loading message display
+      var loadingMessage = document.createElement('div');
+      loadingMessage.id = 'unity-loading-message';
+      loadingMessage.style.cssText = 'position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); color: white; font-family: Arial, sans-serif; font-size: 18px; text-align: center;';
+      document.getElementById('unity-container').appendChild(loadingMessage);
 
-      document.body.appendChild(script);
+      // Load the WebAssembly optimizer first
+      var wasmOptimizerScript = document.createElement("script");
+      wasmOptimizerScript.src = wasmOptimizerUrl;
+      document.body.appendChild(wasmOptimizerScript);
+
+      // Load the enhanced math game loader
+      var mathLoaderScript = document.createElement("script");
+      mathLoaderScript.src = mathLoaderUrl;
+      mathLoaderScript.onload = () => {
+        // Initialize the enhanced loader
+        var mathLoader = new MathGameLoader(config);
+        mathLoader.initialize().then(() => {
+          // Now load the Unity loader
+          var unityScript = document.createElement("script");
+          unityScript.src = loaderUrl;
+          unityScript.onload = () => {
+            mathLoader.createInstance(canvas, (progress) => {
+              progressBarFull.style.width = 100 * progress + "%";
+              loadingMessage.textContent = getKidFriendlyMessage(progress);
+            }).then((unityInstance) => {
+              loadingBar.style.display = "none";
+              loadingMessage.style.display = "none";
+              fullscreenButton.onclick = () => {
+                mathLoader.enterFullscreen();
+              };
+
+              // Add keyboard shortcuts for kids
+              document.addEventListener('keydown', (e) => {
+                if (e.key === 'f' || e.key === 'F') {
+                  mathLoader.enterFullscreen();
+                }
+              });
+
+            }).catch((error) => {
+              loadingBar.style.display = "none";
+              loadingMessage.style.display = "none";
+              alert(error.message);
+            });
+          };
+          document.body.appendChild(unityScript);
+        }).catch((error) => {
+          loadingBar.style.display = "none";
+          loadingMessage.style.display = "none";
+          alert("Failed to initialize game loader: " + error.message);
+        });
+      };
+
+      document.body.appendChild(mathLoaderScript);
+
+      // Register service worker for offline support
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('sw.js')
+            .then((registration) => {
+              console.log('🎉 Service Worker registered successfully!', registration.scope);
+
+              // Handle service worker updates
+              registration.addEventListener('updatefound', () => {
+                const newWorker = registration.installing;
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    // New version available
+                    const updateMessage = document.createElement('div');
+                    updateMessage.innerHTML = `
+                      <div style="position: fixed; top: 10px; right: 10px; background: #4CAF50; color: white; padding: 10px; border-radius: 5px; z-index: 1000; cursor: pointer;">
+                        🎮 New game version available! Click to update.
+                      </div>
+                    `;
+                    updateMessage.onclick = () => {
+                      newWorker.postMessage({ type: 'SKIP_WAITING' });
+                      window.location.reload();
+                    };
+                    document.body.appendChild(updateMessage);
+
+                    setTimeout(() => {
+                      if (updateMessage.parentNode) {
+                        updateMessage.parentNode.removeChild(updateMessage);
+                      }
+                    }, 10000);
+                  }
+                });
+              });
+            })
+            .catch((error) => {
+              console.log('❌ Service Worker registration failed:', error);
+            });
+        });
+      } else {
+        console.log('⚠️ Service Worker not supported. Offline features limited.');
+      }
 
     </script>
   </body>
