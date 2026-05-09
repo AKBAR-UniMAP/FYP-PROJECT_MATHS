@@ -56,67 +56,17 @@
         updateBannerVisibility();
       }
 
-      // Enhanced loading messages for math kids game
-      function getKidFriendlyMessage(progress) {
-        if (progress < 0.2) return "Getting ready for math fun! 🎯";
-        if (progress < 0.4) return "Loading numbers and shapes... 🔢";
-        if (progress < 0.6) return "Preparing math challenges... ➕";
-        if (progress < 0.8) return "Almost ready to play! 🎮";
-        return "Starting your math adventure! 🚀";
-      }
-
-      // Enhanced error handling for kids
-      function kidFriendlyError(message) {
-        const kidMessages = {
-          "WebAssembly": "Oops! Your browser needs an update to play math games. Try using a newer browser! 🌟",
-          "WebGL": "Math games need special graphics! Please update your browser or enable graphics. 🎨",
-          "network": "Can't connect to load the game. Check your internet and try again! 📡",
-          "memory": "Not enough space to load the game. Try closing other tabs! 💾"
-        };
-
-        for (const [key, msg] of Object.entries(kidMessages)) {
-          if (message.toLowerCase().includes(key.toLowerCase())) {
-            return msg;
-          }
-        }
-        return "Something went wrong loading the game. Please refresh and try again! 🔄";
-      }
-
       var buildUrl = "Build";
-      var loaderUrl = buildUrl + "/html.loader.js";
-      var mathLoaderUrl = "math-game-loader.js";
-      var wasmOptimizerUrl = "wasm-optimizer.js";
+      var loaderUrl = buildUrl + "/FYP PROJECT_MATHS.loader.js";
       var config = {
-        dataUrl: buildUrl + "/html.data.gz",
-        frameworkUrl: buildUrl + "/html.framework.js.gz",
-        codeUrl: buildUrl + "/html.wasm.gz",
+        dataUrl: buildUrl + "/FYP PROJECT_MATHS.data.gz",
+        frameworkUrl: buildUrl + "/FYP PROJECT_MATHS.framework.js.gz",
+        codeUrl: buildUrl + "/FYP PROJECT_MATHS.wasm.gz",
         streamingAssetsUrl: "StreamingAssets",
-        companyName: "MathKidsGame",
-        productName: "Math Adventure",
-        productVersion: "1.0",
-        showBanner: function(msg, type) {
-          if (type === 'error') {
-            msg = kidFriendlyError(msg);
-          }
-          unityShowBanner(msg, type);
-        },
-      };
-
-      // Fallback config for uncompressed files (used if compressed files fail)
-      var fallbackConfig = {
-        dataUrl: buildUrl + "/html.data",
-        frameworkUrl: buildUrl + "/html.framework.js",
-        codeUrl: buildUrl + "/html.wasm",
-        streamingAssetsUrl: "StreamingAssets",
-        companyName: "MathKidsGame",
-        productName: "Math Adventure",
-        productVersion: "1.0",
-        showBanner: function(msg, type) {
-          if (type === 'error') {
-            msg = kidFriendlyError(msg);
-          }
-          unityShowBanner(msg, type);
-        },
+        companyName: "DefaultCompany",
+        productName: "My project",
+        productVersion: "0.1",
+        showBanner: unityShowBanner,
       };
 
       // By default, Unity keeps WebGL canvas render target size matched with
@@ -159,119 +109,22 @@
 
       loadingBar.style.display = "block";
 
-      // Register service worker early so it can control requests for .gz Unity assets.
-      // This helps on hosts that don't set Content-Encoding for pre-compressed files.
-      let serviceWorkerReady = Promise.resolve();
-      if ('serviceWorker' in navigator) {
-        const waitForController = () => {
-          if (navigator.serviceWorker.controller) return Promise.resolve();
-          return new Promise((resolve) => {
-            navigator.serviceWorker.addEventListener('controllerchange', () => resolve(), { once: true });
-          });
-        };
-
-        serviceWorkerReady = navigator.serviceWorker.register('sw.js')
-          .then((registration) => {
-            console.log('🎉 Service Worker registered successfully!', registration.scope);
-
-            // Handle service worker updates
-            registration.addEventListener('updatefound', () => {
-              const newWorker = registration.installing;
-              newWorker.addEventListener('statechange', () => {
-                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                  // New version available
-                  const updateMessage = document.createElement('div');
-                  updateMessage.innerHTML = `
-                    <div style="position: fixed; top: 10px; right: 10px; background: #4CAF50; color: white; padding: 10px; border-radius: 5px; z-index: 1000; cursor: pointer;">
-                      🎮 New game version available! Click to update.
-                    </div>
-                  `;
-                  updateMessage.onclick = () => {
-                    newWorker.postMessage({ type: 'SKIP_WAITING' });
-                    window.location.reload();
-                  };
-                  document.body.appendChild(updateMessage);
-
-                  setTimeout(() => {
-                    if (updateMessage.parentNode) {
-                      updateMessage.parentNode.removeChild(updateMessage);
-                    }
-                  }, 10000);
-                }
-              });
-            });
-
-            // Wait until the service worker is active, and (ideally) controlling this page.
-            return navigator.serviceWorker.ready
-              .then(() => Promise.race([
-                waitForController(),
-                new Promise((resolve) => setTimeout(resolve, 2000))
-              ]));
-          })
-          .catch((error) => {
-            console.log('❌ Service Worker registration failed:', error);
-          });
-      } else {
-        console.log('⚠️ Service Worker not supported. Offline features limited.');
-      }
-
-      // Add loading message display
-      var loadingMessage = document.createElement('div');
-      loadingMessage.id = 'unity-loading-message';
-      loadingMessage.style.cssText = 'position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); color: white; font-family: Arial, sans-serif; font-size: 18px; text-align: center;';
-      document.getElementById('unity-container').appendChild(loadingMessage);
-
-      // Load the WebAssembly optimizer first
-      var wasmOptimizerScript = document.createElement("script");
-      wasmOptimizerScript.src = wasmOptimizerUrl;
-      wasmOptimizerScript.onload = () => {
-        // Now load the enhanced math game loader after WasmOptimizer is loaded
-        var mathLoaderScript = document.createElement("script");
-        mathLoaderScript.src = mathLoaderUrl;
-        mathLoaderScript.onload = async () => {
-          // Ensure SW is ready before starting Unity requests (best effort).
-          await serviceWorkerReady;
-
-          // Initialize the enhanced loader with primary config
-          var mathLoader = new MathGameLoader(config);
-          mathLoader.initialize().then(() => {
-            // Now load the Unity loader
-            var unityScript = document.createElement("script");
-            unityScript.src = loaderUrl;
-            unityScript.onload = () => {
-              mathLoader.createInstance(canvas, (progress) => {
-                progressBarFull.style.width = 100 * progress + "%";
-                loadingMessage.textContent = getKidFriendlyMessage(progress);
+      var script = document.createElement("script");
+      script.src = loaderUrl;
+      script.onload = () => {
+        createUnityInstance(canvas, config, (progress) => {
+          progressBarFull.style.width = 100 * progress + "%";
               }).then((unityInstance) => {
                 loadingBar.style.display = "none";
-                loadingMessage.style.display = "none";
                 fullscreenButton.onclick = () => {
-                  mathLoader.enterFullscreen();
+                  unityInstance.SetFullscreen(1);
                 };
-
-                // Add keyboard shortcuts for kids
-                document.addEventListener('keydown', (e) => {
-                  if (e.key === 'f' || e.key === 'F') {
-                    mathLoader.enterFullscreen();
-                  }
-                });
-
-              }).catch((error) => {
-                loadingBar.style.display = "none";
-                loadingMessage.style.display = "none";
-                alert(error.message);
+              }).catch((message) => {
+                alert(message);
               });
             };
-            document.body.appendChild(unityScript);
-          }).catch((error) => {
-            loadingBar.style.display = "none";
-            loadingMessage.style.display = "none";
-            alert("Failed to initialize game loader: " + error.message);
-          });
-        };
-        document.body.appendChild(mathLoaderScript);
-      };
-      document.body.appendChild(wasmOptimizerScript);
+
+      document.body.appendChild(script);
 
     </script>
   </body>
