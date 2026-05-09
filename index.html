@@ -159,6 +159,62 @@
 
       loadingBar.style.display = "block";
 
+      // Register service worker early so it can control requests for .gz Unity assets.
+      // This helps on hosts that don't set Content-Encoding for pre-compressed files.
+      let serviceWorkerReady = Promise.resolve();
+      if ('serviceWorker' in navigator) {
+        const waitForController = () => {
+          if (navigator.serviceWorker.controller) return Promise.resolve();
+          return new Promise((resolve) => {
+            navigator.serviceWorker.addEventListener('controllerchange', () => resolve(), { once: true });
+          });
+        };
+
+        serviceWorkerReady = navigator.serviceWorker.register('sw.js')
+          .then((registration) => {
+            console.log('🎉 Service Worker registered successfully!', registration.scope);
+
+            // Handle service worker updates
+            registration.addEventListener('updatefound', () => {
+              const newWorker = registration.installing;
+              newWorker.addEventListener('statechange', () => {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  // New version available
+                  const updateMessage = document.createElement('div');
+                  updateMessage.innerHTML = `
+                    <div style="position: fixed; top: 10px; right: 10px; background: #4CAF50; color: white; padding: 10px; border-radius: 5px; z-index: 1000; cursor: pointer;">
+                      🎮 New game version available! Click to update.
+                    </div>
+                  `;
+                  updateMessage.onclick = () => {
+                    newWorker.postMessage({ type: 'SKIP_WAITING' });
+                    window.location.reload();
+                  };
+                  document.body.appendChild(updateMessage);
+
+                  setTimeout(() => {
+                    if (updateMessage.parentNode) {
+                      updateMessage.parentNode.removeChild(updateMessage);
+                    }
+                  }, 10000);
+                }
+              });
+            });
+
+            // Wait until the service worker is active, and (ideally) controlling this page.
+            return navigator.serviceWorker.ready
+              .then(() => Promise.race([
+                waitForController(),
+                new Promise((resolve) => setTimeout(resolve, 2000))
+              ]));
+          })
+          .catch((error) => {
+            console.log('❌ Service Worker registration failed:', error);
+          });
+      } else {
+        console.log('⚠️ Service Worker not supported. Offline features limited.');
+      }
+
       // Add loading message display
       var loadingMessage = document.createElement('div');
       loadingMessage.id = 'unity-loading-message';
@@ -172,7 +228,10 @@
         // Now load the enhanced math game loader after WasmOptimizer is loaded
         var mathLoaderScript = document.createElement("script");
         mathLoaderScript.src = mathLoaderUrl;
-        mathLoaderScript.onload = () => {
+        mathLoaderScript.onload = async () => {
+          // Ensure SW is ready before starting Unity requests (best effort).
+          await serviceWorkerReady;
+
           // Initialize the enhanced loader with primary config
           var mathLoader = new MathGameLoader(config);
           mathLoader.initialize().then(() => {
@@ -213,48 +272,6 @@
         document.body.appendChild(mathLoaderScript);
       };
       document.body.appendChild(wasmOptimizerScript);
-
-      // Register service worker for offline support
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('sw.js')
-            .then((registration) => {
-              console.log('🎉 Service Worker registered successfully!', registration.scope);
-
-              // Handle service worker updates
-              registration.addEventListener('updatefound', () => {
-                const newWorker = registration.installing;
-                newWorker.addEventListener('statechange', () => {
-                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    // New version available
-                    const updateMessage = document.createElement('div');
-                    updateMessage.innerHTML = `
-                      <div style="position: fixed; top: 10px; right: 10px; background: #4CAF50; color: white; padding: 10px; border-radius: 5px; z-index: 1000; cursor: pointer;">
-                        🎮 New game version available! Click to update.
-                      </div>
-                    `;
-                    updateMessage.onclick = () => {
-                      newWorker.postMessage({ type: 'SKIP_WAITING' });
-                      window.location.reload();
-                    };
-                    document.body.appendChild(updateMessage);
-
-                    setTimeout(() => {
-                      if (updateMessage.parentNode) {
-                        updateMessage.parentNode.removeChild(updateMessage);
-                      }
-                    }, 10000);
-                  }
-                });
-              });
-            })
-            .catch((error) => {
-              console.log('❌ Service Worker registration failed:', error);
-            });
-        });
-      } else {
-        console.log('⚠️ Service Worker not supported. Offline features limited.');
-      }
 
     </script>
   </body>

@@ -67,6 +67,42 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
+  const fixUnityGzipHeadersIfNeeded = (response) => {
+    try {
+      const pathname = url.pathname.toLowerCase();
+      if (!pathname.endsWith('.gz')) return response;
+
+      const headers = new Headers(response.headers);
+      const contentEncoding = headers.get('content-encoding');
+
+      // If the server doesn't provide Content-Encoding for precompressed .gz files,
+      // browsers will not decompress and Unity will fail to parse/compile.
+      if (!contentEncoding) {
+        headers.set('Content-Encoding', 'gzip');
+      }
+
+      // Ensure correct content types for Unity assets.
+      if (!headers.get('content-type')) {
+        if (pathname.endsWith('.wasm.gz')) headers.set('Content-Type', 'application/wasm');
+        else if (pathname.endsWith('.js.gz')) headers.set('Content-Type', 'application/javascript');
+        else headers.set('Content-Type', 'application/octet-stream');
+      }
+
+      // If we didn't change anything, keep the original response.
+      if (headers.get('content-encoding') === contentEncoding && response.headers.get('content-type') === headers.get('content-type')) {
+        return response;
+      }
+
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
+    } catch {
+      return response;
+    }
+  };
+
   // Handle navigation requests
   if (event.request.mode === 'navigate') {
     event.respondWith(
@@ -94,6 +130,8 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
+          response = fixUnityGzipHeadersIfNeeded(response);
+
           // Cache successful responses
           if (response.ok) {
             const responseClone = response.clone();
@@ -129,6 +167,8 @@ self.addEventListener('fetch', (event) => {
 
         return fetch(event.request)
           .then((response) => {
+            response = fixUnityGzipHeadersIfNeeded(response);
+
             // Don't cache non-successful responses
             if (!response.ok) {
               return response;

@@ -174,17 +174,56 @@ class WasmOptimizer {
   async preloadWasm(url) {
     if (!this.wasmSupported) return null;
 
-    // Skip preloading for compressed files - Unity handles decompression
-    if (url.endsWith('.gz')) {
-      console.log("⚡ Skipping WebAssembly preload for compressed file:", url);
-      return null;
+    // Skip preloading for compressed files - Unity/server should handle decompression.
+    // Normalize the URL so query strings like "file.wasm.gz?v=1" are still detected.
+    try {
+      const normalizedUrl = new URL(url, document.baseURI);
+      const path = normalizedUrl.pathname.toLowerCase();
+
+      if (path.endsWith('.gz') || path.endsWith('.br') || path.endsWith('.unityweb')) {
+        console.log("⚡ Skipping WebAssembly preload for compressed file:", url);
+        return null;
+      }
+    } catch {
+      // If URL parsing fails, fall back to a simple heuristic.
+      const simplified = String(url).split('#')[0].split('?')[0].toLowerCase();
+      if (simplified.endsWith('.gz') || simplified.endsWith('.br') || simplified.endsWith('.unityweb')) {
+        console.log("⚡ Skipping WebAssembly preload for compressed file:", url);
+        return null;
+      }
     }
 
     try {
       console.log("⚡ Preloading WebAssembly module...");
 
       const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
       const buffer = await response.arrayBuffer();
+
+      // Validate that we really fetched a wasm binary (0x00 0x61 0x73 0x6d).
+      // This prevents misleading "expected magic word" errors when the server returns HTML/404 pages.
+      const bytes = new Uint8Array(buffer);
+      const hasWasmMagic = bytes.length >= 4 && bytes[0] === 0x00 && bytes[1] === 0x61 && bytes[2] === 0x73 && bytes[3] === 0x6d;
+      if (!hasWasmMagic) {
+        const contentType = response.headers.get('content-type') || 'unknown';
+        let preview = '';
+        try {
+          // Try to decode a small preview; useful if the response is HTML.
+          preview = new TextDecoder('utf-8', { fatal: false }).decode(bytes.slice(0, 80)).replace(/\s+/g, ' ').trim();
+        } catch {
+          // ignore
+        }
+
+        console.warn("⚠️ Skipping WebAssembly preload: response is not a wasm binary", {
+          url,
+          contentType,
+          byte0_3: Array.from(bytes.slice(0, 4)),
+          preview
+        });
+        return null;
+      }
 
       window.performance.mark('wasm-fetch-end');
 

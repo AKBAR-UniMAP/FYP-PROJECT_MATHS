@@ -179,8 +179,9 @@ class MathGameLoader {
       try {
         console.log(`🎯 Creating Unity instance for Math Adventure (attempt ${attemptCount + 1})...`);
 
-        // Preload WebAssembly if optimizer is available (skip for compressed files)
-        if (this.wasmOptimizer && !this.wasmOptimizer.fallbackMode && !currentConfig.codeUrl.endsWith('.gz')) {
+        // Preload WebAssembly if optimizer is available.
+        // WasmOptimizer handles skipping compressed URLs (including query strings).
+        if (this.wasmOptimizer && !this.wasmOptimizer.fallbackMode) {
           await this.wasmOptimizer.preloadWasm(currentConfig.codeUrl);
         }
 
@@ -202,26 +203,58 @@ class MathGameLoader {
 
         attemptCount++;
 
-        // If this is the first attempt and we were using compressed files, try uncompressed
+        // If this is the first attempt and we were using compressed files, only try uncompressed
+        // if those files actually exist. Many Unity WebGL exports ship ONLY .gz assets.
         if (attemptCount === 1 && this.isUsingCompressedFiles(currentConfig)) {
-          console.log("🔄 Switching to uncompressed files...");
-          currentConfig = this.getUncompressedConfig();
-          continue;
+          const maybeUncompressed = await this.tryGetUncompressedConfigIfAvailable(currentConfig);
+          if (maybeUncompressed) {
+            console.log("🔄 Switching to uncompressed files...");
+            currentConfig = maybeUncompressed;
+            continue;
+          }
         }
 
         // Provide more specific error messages for common issues
         let friendlyError = this.getKidFriendlyError(error);
 
         if (error.message.includes('SyntaxError') || error.message.includes('Invalid or unexpected token')) {
-          friendlyError = "The game files seem to be compressed. Please refresh the page or try a different browser! 📦";
+          friendlyError = "These Unity files are compressed (.gz), but the server isn't sending the right gzip headers. If you're running locally, use a server that sets Content-Encoding: gzip for .gz files. 📦";
         } else if (error.message.includes('WebAssembly.compile') || error.message.includes('magic word')) {
-          friendlyError = "The game needs a newer browser to run. Please update Chrome, Firefox, or Safari! 🌟";
+          friendlyError = "The WebAssembly file being loaded isn't a real .wasm binary (often caused by missing gzip headers or a 404/HTML response). Check your server headers for .wasm(.gz). ⚙️";
         } else if (error.message.includes('network') || error.message.includes('fetch')) {
           friendlyError = "Can't download the game files. Check your internet connection and try again! 📡";
         }
 
         throw new Error(friendlyError);
       }
+    }
+  }
+
+  // Only fall back to uncompressed URLs if the uncompressed artifacts exist.
+  // Returns a config object or null.
+  async tryGetUncompressedConfigIfAvailable(config) {
+    const uncompressed = {
+      dataUrl: config.dataUrl.replace('.gz', ''),
+      frameworkUrl: config.frameworkUrl.replace('.gz', ''),
+      codeUrl: config.codeUrl.replace('.gz', ''),
+      streamingAssetsUrl: config.streamingAssetsUrl,
+      companyName: config.companyName,
+      productName: config.productName,
+      productVersion: config.productVersion,
+      showBanner: config.showBanner,
+    };
+
+    const urlsToCheck = [uncompressed.dataUrl, uncompressed.frameworkUrl, uncompressed.codeUrl];
+    const checks = await Promise.all(urlsToCheck.map((url) => this.urlExists(url)));
+    return checks.every(Boolean) ? uncompressed : null;
+  }
+
+  async urlExists(url) {
+    try {
+      const response = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+      return response.ok;
+    } catch {
+      return false;
     }
   }
 
